@@ -16,7 +16,7 @@ var logger hclog.Logger
 
 func init() {
 	once.Do(func() {
-		logger = nil
+		logger = nil // asserts New is called once
 		loggers = make(map[string]hclog.Logger)
 	})
 }
@@ -40,6 +40,9 @@ func New(name string) hclog.Logger {
 // Get returns a named logger by either creating a new named logger or
 // returning existing one
 func Get(name string) hclog.Logger {
+	if logger == nil{
+		return nil
+	}
 	if loggers[name] == nil {
 		loggers[name] = logger.Named(name)
 	}
