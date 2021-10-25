@@ -20,14 +20,23 @@ func init() {
 	})
 }
 
+// NewTimer closes returned channel on timeout. Use quit channel to exit timer
+// without closing returned channel. Thread safe
+func NewTimer(timeout int) (timedOut <-chan bool, quits chan<- bool) {
+	return newTimer(randomInt(), time.Duration(timeout))
+}
 // NewTimerRandomDelay closes returned channel on timeout. Use quit channel to exit timer
 // without closing returned channel. Thread safe
 func NewTimerRandomDelay(timeout int) (timedOut <-chan bool, quits chan<- bool) {
+	r := randomInt()
+	randomDelay := time.Duration(timeout + r)
+	return newTimer(r, randomDelay)
+}
+
+func newTimer(r int, randomDelay time.Duration)(chan bool, chan bool) {
 	logger := mLogger.Get("timer")
 	quit := make(chan bool)
 	timed := make(chan bool)
-	r := randomInt()
-	randomDelay := time.Duration(timeout + r)
 	mutex.Lock()
 	timers++
 	mutex.Unlock()
