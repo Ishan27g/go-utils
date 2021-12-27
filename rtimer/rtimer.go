@@ -2,11 +2,8 @@ package rtimer
 
 import (
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
-
-	"github.com/Ishan27g/go-utils/mLogger"
 )
 
 var timers int
@@ -25,6 +22,7 @@ func init() {
 func NewTimer(timeout int) (timedOut <-chan bool, quits chan<- bool) {
 	return newTimer(randomInt(), time.Duration(timeout))
 }
+
 // NewTimerRandomDelay closes returned channel on timeout. Use quit channel to exit timer
 // without closing returned channel. Thread safe
 func NewTimerRandomDelay(timeout int) (timedOut <-chan bool, quits chan<- bool) {
@@ -33,27 +31,23 @@ func NewTimerRandomDelay(timeout int) (timedOut <-chan bool, quits chan<- bool) 
 	return newTimer(r, randomDelay)
 }
 
-func newTimer(r int, randomDelay time.Duration)(chan bool, chan bool) {
-	logger := mLogger.Get("timer")
+func newTimer(r int, randomDelay time.Duration) (chan bool, chan bool) {
 	quit := make(chan bool)
 	timed := make(chan bool)
 	mutex.Lock()
 	timers++
 	mutex.Unlock()
-	logger.Trace("New timer, id - " + strconv.Itoa(r) + " | total timers - " + strconv.Itoa(timers))
 	go func() {
 		select {
 		case <-quit:
 			mutex.Lock()
 			timers--
 			mutex.Unlock()
-			logger.Trace("Quitting timer early, id - " + strconv.Itoa(r) + " | total timers - " + strconv.Itoa(timers))
 			return
 		case <-time.After(randomDelay * time.Millisecond):
 			mutex.Lock()
 			timers--
 			mutex.Unlock()
-			logger.Trace("Timed out, id - " + strconv.Itoa(r) + " | total timers - " + strconv.Itoa(timers))
 			close(timed)
 		}
 	}()
