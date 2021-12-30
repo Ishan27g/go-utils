@@ -1,18 +1,41 @@
 package mLogger
 
 import (
-	"io"
-	"os"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
 )
 
-const defaultLevel = "info"
+type LoggerI interface{}
+type loggerI struct{}
+type Option func(l *LoggerI)
+
+func Apply(options ...Option) LoggerI {
+	newLogger := func() LoggerI {
+		return &loggerI{}
+	}
+	l := newLogger()
+	for _, option := range options {
+		option(&l)
+	}
+	return l
+}
+func Level(level hclog.Level) Option {
+	return func(l *LoggerI) {
+		logLevel = level
+	}
+}
+func Color(color bool) Option {
+	return func(l *LoggerI) {
+		if !color {
+			colorOn = hclog.ColorOff
+		}
+	}
+}
 
 var once sync.Once
-var output io.Writer
-var mx sync.Mutex
+var logLevel = hclog.Trace
+var colorOn = hclog.AutoColor
 
 // loggers added as Named
 var loggers map[string]hclog.Logger
@@ -22,30 +45,22 @@ var logger hclog.Logger
 
 func init() {
 	once.Do(func() {
-		mx = sync.Mutex{}
-		logger = nil       // asserts New is called once
-		output = os.Stderr // default out
+		logger = nil // asserts New is called once
 		loggers = make(map[string]hclog.Logger)
 	})
 }
 
 // New create a new top level logger with hclog.LevelFromString
-// Subsequent modules should call Get.
-// Default level is "info" & default out is stderr
-func New(name, lvl string, out io.Writer) hclog.Logger {
-	if lvl == "" {
-		lvl = defaultLevel
-	}
-	if out != nil {
-		output = out
-	}
+// Subsequent modules should call Get
+func New(name string) hclog.Logger {
+	m := sync.Mutex{}
+
 	opts := hclog.LoggerOptions{
 		Name:        "[" + name + "]",
-		Level:       hclog.LevelFromString(lvl),
-		Mutex:       &sync.Mutex{},
+		Level:       logLevel,
+		Mutex:       &m,
 		DisableTime: true,
-		Color:       hclog.AutoColor,
-		Output:      output,
+		Color:       colorOn,
 	}
 	logger = hclog.New(&opts)
 	loggers[name] = hclog.New(&opts)
@@ -56,13 +71,11 @@ func New(name, lvl string, out io.Writer) hclog.Logger {
 // returning existing one. If no top level logger exists, the first call to Get
 // creates a top level logger
 func Get(name string) hclog.Logger {
-	mx.Lock()
-	defer mx.Unlock()
 	if logger == nil {
-		return New(name, defaultLevel, output)
+		return New(name)
 	}
 	if loggers[name] == nil {
-		loggers[name] = logger.Named(name)
+		loggers[name] = New(name)
 	}
 	return loggers[name]
 }
