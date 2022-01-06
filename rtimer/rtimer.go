@@ -19,19 +19,18 @@ func init() {
 
 // NewTimer closes returned channel on timeout. Use quit channel to exit timer
 // without closing returned channel. Thread safe
-func NewTimer(timeout int) (timedOut <-chan bool, quits chan<- bool) {
-	return newTimer(randomInt(), time.Duration(timeout))
+func NewTimer(timeout time.Duration) (timedOut <-chan bool, quits chan<- bool) {
+	return newTimer(timeout)
 }
 
 // NewTimerRandomDelay closes returned channel on timeout. Use quit channel to exit timer
 // without closing returned channel. Thread safe
-func NewTimerRandomDelay(timeout int) (timedOut <-chan bool, quits chan<- bool) {
-	r := randomInt()
-	randomDelay := time.Duration(timeout + r)
-	return newTimer(r, randomDelay)
+func NewTimerRandomDelay(timeout time.Duration) (timedOut <-chan bool, quits chan<- bool) {
+	randomDelay := timeout + time.Duration(randomInt())
+	return newTimer(randomDelay)
 }
 
-func newTimer(r int, randomDelay time.Duration) (chan bool, chan bool) {
+func newTimer(duration time.Duration) (chan bool, chan bool) {
 	quit := make(chan bool)
 	timed := make(chan bool)
 	mutex.Lock()
@@ -44,7 +43,7 @@ func newTimer(r int, randomDelay time.Duration) (chan bool, chan bool) {
 			timers--
 			mutex.Unlock()
 			return
-		case <-time.After(randomDelay * time.Millisecond):
+		case <-time.After(duration * time.Millisecond):
 			mutex.Lock()
 			timers--
 			mutex.Unlock()
