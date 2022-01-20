@@ -76,10 +76,11 @@ func Get(name string) hclog.Logger {
 	if logger == nil {
 		return New(name)
 	}
+	lock.Lock()
 	if loggers[name] == nil {
+		lock.Unlock()
 		return New(name)
 	}
-	lock.Lock()
 	defer lock.Unlock()
 	return loggers[name]
 }
