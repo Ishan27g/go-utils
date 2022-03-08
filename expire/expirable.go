@@ -9,9 +9,10 @@ import (
 var ExpiryTime = 2 * time.Second
 
 type Expiry interface {
-	Add(ids ...string) // Add ids that will expire
+	Add(ids ...string) // Add ids that will expire. Re-adding same id before it expires resets the timer
 	Reset(ids ...string)
 	GetExpired() []string // GetExpired returns ids that have expired
+	Check(id string) bool // check if id is present and
 }
 
 type expiry struct {
@@ -22,6 +23,11 @@ type expiry struct {
 		can context.CancelFunc
 	}
 	expired []string
+}
+
+// Check returns true if id is added but not yet expired
+func (e *expiry) Check(id string) bool {
+	return e.ids[id] != nil
 }
 
 // Add an id that will get appended to expired slice after no further calls to add/reset
@@ -48,6 +54,7 @@ func (e *expiry) expire(id string) {
 		case <-time.After(ExpiryTime):
 			e.lock.Lock()
 			e.expired = append(e.expired, id)
+			delete(e.ids, id)
 			e.lock.Unlock()
 		case <-ctx.Done():
 			return
