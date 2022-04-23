@@ -1,4 +1,4 @@
-package data
+package expire
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var ExpiryTime = 2 * time.Second
+var expiryTime = 2 * time.Second
 
 type Expiry interface {
 	Add(ids ...string) // Add ids that will expire. Re-adding same id before it expires resets the timer
@@ -51,7 +51,7 @@ func (e *expiry) expire(id string) {
 	ctx, _ := context.WithCancel(e.reset[id].ctx)
 	go func() {
 		select {
-		case <-time.After(ExpiryTime):
+		case <-time.After(expiryTime):
 			e.lock.Lock()
 			e.expired = append(e.expired, id)
 			delete(e.ids, id)
@@ -93,7 +93,7 @@ func (e *expiry) Reset(ids ...string) {
 }
 
 func NewExpiry(withTimeout time.Duration) Expiry {
-	ExpiryTime = withTimeout
+	expiryTime = withTimeout
 	return &expiry{
 		lock: sync.Mutex{},
 		ids:  make(map[string]*time.Time),
