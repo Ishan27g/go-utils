@@ -20,7 +20,7 @@ const (
 var isNoop = false
 
 func timeIt(from time.Time) {
-	fmt.Println("took", time.Since(from))
+	fmt.Println(fmt.Sprintf("\nisNoop:%v took:%v", isNoop, time.Since(from)))
 }
 func buildUrl(service, d string) string {
 	buildUrl := func() string {
@@ -67,6 +67,16 @@ func sendRequestWithActions(actions *noop.Actions, service, data string) {
 	rsp := sendHttpReq(ctx, buildUrl(service, data))
 	actions.AddEvent(rsp...)
 }
+
+// TestRequestPipeline
+/* Noop-Testing: --> manually trigger the async methods across the pipeline
+- http trigger returns actions for that service
+- send requests with `actions` iteratively to each service in the pipeline
+- each service returns its actions
+
+when `noop=true` -> services return before publishing, client triggers each service
+when `noop=false` -> services act as normal and publish for the next service
+*/
 func TestRequestPipeline() *noop.Actions {
 	defer timeIt(time.Now())
 	service1 := "9999/endpoint1"
@@ -105,21 +115,25 @@ func main() {
 		startServer()
 	}()
 
-	// Test normal requests to service's , i.e. without `noop` (noop=false)
-	// Each service will do a DB operation
+	// Test the pipeline as is -> Async
+	// Test a normal request -> trigger first service in pipeline without `noop` i.e. noop=false
+	// The first service would behave as normal and trigger next service in the pipeline
+	// All subsequent services in the pipeline should get triggered
 	isNoop = false
-	actionsWithoutNoop := TestRequestPipeline()
-	fmt.Println("noop = false")
-	for _, event := range actionsWithoutNoop.GetEvents() {
-		fmt.Println(fmt.Sprintf("[%s]:%v", event.Name, event.Meta))
-	}
 
-	// Test same service's with `noop` requests (noop=true)
-	// Each service behave as before except returning before DB operations
+	// todo send only to 1
+	//actionsWithoutNoop := TestRequestPipeline()
+	//for _, event := range actionsWithoutNoop.GetEvents() {
+	//	fmt.Println(fmt.Sprintf("[%s]:%v", event.Name, event.Meta))
+	//}
+
+	// Noop-Testing: Test the pipeline synchronously
+	// Test the same service's with `noop` requests i.e. noop=true.
+	// Each service behave as before except returning before publish operation
+	// Manually trigger each service based in the pipeline
 	isNoop = true
 	actionsWithNoop := TestRequestPipeline()
 
-	fmt.Println("\nnoop = true")
 	for _, event := range actionsWithNoop.GetEvents() {
 		fmt.Println(fmt.Sprintf("[%s]:%v", event.Name, event.Meta))
 	}
