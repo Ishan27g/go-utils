@@ -13,8 +13,7 @@ import (
 
 const (
 	host        = "http://localhost:"
-	data        = "?data="
-	urlWithNoop = "&noop=true"
+	urlWithNoop = "?noop=true"
 )
 
 var isNoop = false
@@ -22,9 +21,9 @@ var isNoop = false
 func timeIt(from time.Time) {
 	fmt.Println(fmt.Sprintf("\nisNoop:%v took:%v", isNoop, time.Since(from)))
 }
-func buildUrl(service, d string) string {
+func buildUrl(service string) string {
 	buildUrl := func() string {
-		return host + service + data + d
+		return host + service
 	}
 	if !isNoop {
 		return buildUrl()
@@ -62,9 +61,9 @@ func sendHttpReq(ctx context.Context, to string) []noop.Event {
 	}
 	return events
 }
-func sendRequestWithActions(actions *noop.Actions, service, data string) {
+func sendRequestWithActions(actions *noop.Actions, service string) {
 	ctx := noop.NewCtxWithActions(context.Background(), actions)
-	rsp := sendHttpReq(ctx, buildUrl(service, data))
+	rsp := sendHttpReq(ctx, buildUrl(service))
 	actions.AddEvent(rsp...)
 }
 
@@ -92,19 +91,19 @@ func TestRequestPipeline() *noop.Actions {
 		Meta: meta("service1"),
 	})
 
-	sendRequestWithActions(actions, service1, "data1")
+	sendRequestWithActions(actions, service1)
 
 	actions.AddEvent(noop.Event{
 		Name: "From tester to service2",
 		Meta: meta("service2"),
 	})
-	sendRequestWithActions(actions, service2, "data2")
+	sendRequestWithActions(actions, service2)
 
 	actions.AddEvent(noop.Event{
 		Name: "From tester to service3",
 		Meta: meta("service3"),
 	})
-	sendRequestWithActions(actions, service3, "data3")
+	sendRequestWithActions(actions, service3)
 
 	return actions
 }

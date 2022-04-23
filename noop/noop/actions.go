@@ -16,8 +16,9 @@ type Actions struct {
 	Events chan []interface{}
 }
 type Event struct {
-	Name string      `json:"name,omitempty"`
-	Meta interface{} `json:"meta,omitempty"`
+	Name        string      `json:"name,omitempty"`
+	NextSubject string      `json:"NextSubject"`
+	Meta        interface{} `json:"meta,omitempty"`
 }
 
 func NewCtxWithActions(ctx context.Context, actions *Actions) context.Context {
@@ -55,7 +56,7 @@ func (a *Actions) GetEvents() []Event {
 func (a *Actions) AddEvent(events ...Event) {
 	// don't add if not present
 	if a == nil || a.Events == nil {
-		fmt.Println("actions or Events is nil")
+		// fmt.Println("actions or Events is nil")
 		return
 	}
 	e := <-a.Events
@@ -79,5 +80,9 @@ func ActionsFromCtx(ctx context.Context) *Actions {
 		return nil
 	}
 	// return nil or actions if present
-	return ctx.Value(actionKey).(*Actions)
+	a := ctx.Value(actionKey)
+	if a == nil {
+		return nil
+	}
+	return a.(*Actions)
 }
