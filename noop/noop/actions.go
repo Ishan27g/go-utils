@@ -17,10 +17,21 @@ type Actions struct {
 }
 type Event struct {
 	Name        string      `json:"name,omitempty"`
-	NextSubject string      `json:"NextSubject"`
+	NextSubject string      `json:"nextSubject"`
 	Meta        interface{} `json:"meta,omitempty"`
 }
 
+func ActionsFromCtx(ctx context.Context) *Actions {
+	if ctx == nil {
+		return nil
+	}
+	// return nil or actions if present
+	a := ctx.Value(actionKey)
+	if a == nil {
+		return nil
+	}
+	return a.(*Actions)
+}
 func NewCtxWithActions(ctx context.Context, actions *Actions) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -42,7 +53,7 @@ func (a *Actions) GetEvents() []Event {
 		return nil
 	}
 	if a.Events == nil {
-		fmt.Println("Events nil ")
+		fmt.Println("events nil ")
 		return nil
 	}
 	events := <-a.Events
@@ -74,15 +85,4 @@ func (a *Actions) Marshal() ([]byte, error) {
 	e := <-a.Events
 	defer func() { a.Events <- e }()
 	return json.Marshal(Json{Events: e})
-}
-func ActionsFromCtx(ctx context.Context) *Actions {
-	if ctx == nil {
-		return nil
-	}
-	// return nil or actions if present
-	a := ctx.Value(actionKey)
-	if a == nil {
-		return nil
-	}
-	return a.(*Actions)
 }

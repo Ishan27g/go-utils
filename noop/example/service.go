@@ -2,6 +2,7 @@ package example
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 type Service struct {
 	Name  string `json:"name"`
 	Stage int    `json:"subj"`
+	Port  string
 }
 
 func (s *Service) subjForThis() string {
@@ -23,12 +25,31 @@ func (s *Service) subjForThis() string {
 func (s *Service) subjForNext() string {
 	return "pipeline.stage." + strconv.Itoa(s.Stage+1)
 }
-func New(name string, stage int) *Service {
+func New(name string, port string, stage int) *Service {
 	s := Service{
 		Name:  name,
 		Stage: stage,
+		Port:  port,
 	}
+	defer startServer(&s, port)
 	return &s
+}
+
+func startServer(service *Service, port string) {
+
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	r.POST("/endpoint", service.TriggerAsyncFromHttp)
+
+	log.Println("starting on", port)
+	go func() {
+		err := r.Run(port)
+		if err != nil {
+			log.Fatalf(err.Error(), err)
+		}
+	}()
 }
 
 // GenericMethod is any generic async method in a request pipeline
@@ -49,7 +70,7 @@ func (s *Service) GenericMethod(ctx context.Context, data *nats.Msg) bool {
 	// define event to be added
 	event := noop.Event{
 		Name:        "Async method triggered at " + s.Name,
-		NextSubject: s.subjForNext(),
+		NextSubject: "Next stage -> " + s.subjForNext(),
 		Meta:        string(data.Data),
 	}
 
@@ -66,8 +87,17 @@ func (s *Service) GenericMethod(ctx context.Context, data *nats.Msg) bool {
 	return NatsPublish(s.subjForNext(), string(data.Data), nil)
 }
 
+type d struct {
+	Data string `json:"Data"`
+}
+
 func (s *Service) TriggerAsyncFromHttp(c *gin.Context) {
 
+	var data d
+	if e := c.ShouldBindJSON(&data); e != nil {
+		c.JSON(http.StatusExpectationFailed, nil)
+		return
+	}
 	/* Noop-Testing:
 	   Wrap async method as its own http handler, which based on the `noop` param
 	   - extracts the action from request
@@ -84,17 +114,18 @@ func (s *Service) TriggerAsyncFromHttp(c *gin.Context) {
 	actions := noop.NewActions()
 
 	// add an event
-	// actions.AddEvent(noop.Event{Name: "Endpoint", Meta: c.Request.URL.RequestURI()})
+	actions.AddEvent(noop.Event{Name: "Endpoint hit at " + s.Name, Meta: c.Request.URL.RequestURI()})
 	ctx = noop.NewCtxWithActions(ctx, actions)
 
 	// manually trigger the async method
-	if !s.GenericMethod(ctx, nats.NewMsg("")) {
+	if !s.GenericMethod(ctx, &nats.Msg{Data: []byte(data.Data)}) {
 		c.JSON(http.StatusExpectationFailed, nil)
+		return
 	}
 
 	if rsp, err := actions.Marshal(); err == nil {
 		c.Writer.WriteHeader(http.StatusOK)
-		c.Writer.Write(rsp)
+		_, _ = c.Writer.Write(rsp)
 		return
 	}
 	c.JSON(http.StatusExpectationFailed, nil)

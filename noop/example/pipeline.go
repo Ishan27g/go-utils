@@ -1,29 +1,25 @@
 package example
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/Ishan27g/go-utils/noop/noop"
-	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	host        = "http://localhost:"
+	host        = "http://localhost"
 	urlWithNoop = "?noop=true"
 )
 
 var isNoop = false
 
-func timeIt(from time.Time) {
-	fmt.Println(fmt.Sprintf("\nisNoop:%v took:%v", isNoop, time.Since(from)))
-}
 func buildUrl(service string) string {
 	buildUrl := func() string {
 		return host + service
@@ -33,16 +29,22 @@ func buildUrl(service string) string {
 	}
 	return buildUrl() + urlWithNoop
 }
-
-func setup() (*Service, *Service, *Service, *Service) {
-	s1 := New("service-1", 1)
-	s2 := New("service-2", 2)
-	s3 := New("service-3", 3)
-	s4 := New("service-4", 4)
+func SetNoop(as bool) {
+	isNoop = as
+}
+func Setup() (*Service, *Service, *Service, *Service) {
+	s1 := New("service-1", ":9991", 1)
+	s2 := New("service-2", ":9992", 2)
+	s3 := New("service-3", ":9993", 3)
+	s4 := New("service-4", ":9994", 4)
 	return s1, s2, s3, s4
 }
-func sendHttpReq(ctx context.Context, to string) []noop.Event {
-	request, err := http.NewRequestWithContext(ctx, "GET", to, nil)
+func sendHttpReq(ctx context.Context, to string, data string) []noop.Event {
+	payload, err := json.Marshal(d{Data: data})
+	if err != nil {
+		return nil
+	}
+	request, err := http.NewRequestWithContext(ctx, "POST", to, bytes.NewReader(payload))
 	if err != nil {
 		return nil
 	}
@@ -67,15 +69,25 @@ func sendHttpReq(ctx context.Context, to string) []noop.Event {
 	var events []noop.Event
 	for _, event := range actions.Events {
 		e := event.(map[string]interface{})
-		events = append(events, noop.Event{Name: e["name"].(string), Meta: e["meta"]})
+		events = append(events, noop.Event{Name: e["name"].(string),
+			Meta: e["meta"], NextSubject: e["nextSubject"].(string)})
 	}
 	return events
 }
-func RunAsync() {
-	s1, s2, s3, s4 := setup()
+func sendRequestWithActions(actions *noop.Actions, service, data string) bool {
+	ctx := noop.NewCtxWithActions(context.Background(), actions)
+	rsp := sendHttpReq(ctx, buildUrl(service), data)
+	if rsp != nil {
+		actions.AddEvent(rsp...)
+		return true
+	}
+	return false
+}
 
+func TriggerAsync(s1, s2, s3, s4 *Service) {
 	g, _ := errgroup.WithContext(context.Background())
 
+	// subscribe for all stages except the first one
 	g.Go(func() error {
 		NatsSubscribe(s4.subjForThis(), s4.GenericMethod)
 		return nil
@@ -88,79 +100,48 @@ func RunAsync() {
 		NatsSubscribe(s2.subjForThis(), s2.GenericMethod)
 		return nil
 	})
+	_ = g.Wait()
 
-	<-time.After(1 * time.Second)
-
+	// publish from first stage
 	g.Go(func() error {
 		NatsPublish(s1.subjForNext(), "pipeline-data", nil)
 		return nil
 	})
 	_ = g.Wait()
+
 }
 
-func sendRequestWithActions(actions *noop.Actions, service, data string) {
-	ctx := noop.NewCtxWithActions(context.Background(), actions)
-	rsp := sendHttpReq(ctx, buildUrl(service))
-	actions.AddEvent(rsp...)
-}
+// SendHttpNoop sends http to individually trigger each service in order
+func SendHttpNoop(s1, s2, s3, s4 *Service, triggerAll bool) {
 
-func startServer(service *Service, port string) {
-
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
-
-	r.GET("/endpoint", service.TriggerAsyncFromHttp)
-
-	log.Println("starting on", port)
-	err := r.Run(port)
-	if err != nil {
-		log.Fatalf(err.Error(), err)
-	}
-}
-
-func RunSync() {
 	data := "pipeline-data"
-	endpoint := "endpoint"
-
-	s1, s2, s3, s4 := setup()
-
-	go startServer(s1, ":9991")
-	go startServer(s2, ":9992")
-	go startServer(s3, ":9993")
-	go startServer(s4, ":9994")
+	endpoint := "/endpoint"
 
 	actions := noop.NewActions()
-	actions.AddEvent(noop.Event{
-		Name:        "From tester to service1",
-		NextSubject: s1.subjForNext(),
-		Meta:        data,
-	})
-	sendRequestWithActions(actions, "9991/"+endpoint, data)
+	if !sendRequestWithActions(actions, s1.Port+endpoint, data) {
+		fmt.Println("error at " + s1.Name)
+		return
+	}
+	if triggerAll {
+		if !sendRequestWithActions(actions, s2.Port+endpoint, data) {
+			fmt.Println("error at " + s2.Name)
+			return
+		}
 
-	actions.AddEvent(noop.Event{
-		Name:        "From tester to service2",
-		NextSubject: s2.subjForNext(),
-		Meta:        data,
-	})
-	sendRequestWithActions(actions, "9992/"+endpoint, data)
+		if !sendRequestWithActions(actions, s3.Port+endpoint, data) {
+			fmt.Println("error at " + s3.Name)
+			return
+		}
 
-	actions.AddEvent(noop.Event{
-		Name:        "From tester to service3",
-		NextSubject: s3.subjForNext(),
-		Meta:        data,
-	})
-	sendRequestWithActions(actions, "9993/"+endpoint, data)
+		if !sendRequestWithActions(actions, s4.Port+endpoint, data) {
+			fmt.Println("error at " + s4.Name)
+			return
+		}
+	}
 
-	actions.AddEvent(noop.Event{
-		Name:        "From tester to service4",
-		NextSubject: s4.subjForNext(),
-		Meta:        data,
-	})
-	sendRequestWithActions(actions, "9994/"+endpoint, data)
-
+	fmt.Println("All actions:")
 	for _, event := range actions.GetEvents() {
-		fmt.Println(fmt.Sprintf("[%s]:%v", event.Name, event.Meta))
+		fmt.Println(fmt.Sprintf("\t- [%s]:[%v][%v] ", event.Name, event.NextSubject, event.Meta))
 	}
 
 }
