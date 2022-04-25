@@ -19,12 +19,6 @@ type Service struct {
 	Port  string
 }
 
-func (s *Service) subjForThis() string {
-	return "pipeline.stage." + strconv.Itoa(s.Stage)
-}
-func (s *Service) subjForNext() string {
-	return "pipeline.stage." + strconv.Itoa(s.Stage+1)
-}
 func New(name string, port string, stage int) *Service {
 	s := Service{
 		Name:  name,
@@ -34,7 +28,45 @@ func New(name string, port string, stage int) *Service {
 	defer startServer(&s, port)
 	return &s
 }
+func (s *Service) TriggerAsyncFromHttp(c *gin.Context) {
 
+	var data d
+	if e := c.ShouldBindJSON(&data); e != nil {
+		c.JSON(http.StatusExpectationFailed, nil)
+		return
+	}
+	/* Noop-Testing:
+	   Wrap async method as its own http handler, which based on the `noop` param
+	   - extracts the action from request
+	   - triggers underlying async method
+	   - responds with actions taken by this method
+	*/
+
+	// get `noop=` from url
+	isNoop := strings.EqualFold(c.Query("noop"), "true")
+
+	ctx := noop.NewCtxWithNoop(context.Background(), isNoop) // todo new ctx or gin-request context?
+
+	// actions for this request
+	actions := noop.NewActions()
+
+	// add an event
+	actions.AddEvent(noop.Event{Name: "Endpoint hit at " + s.Name, Meta: c.Request.URL.RequestURI()})
+	ctx = noop.NewCtxWithActions(ctx, actions)
+
+	// manually trigger the async method
+	if !s.GenericMethod(ctx, &nats.Msg{Data: []byte(data.Data)}) {
+		c.JSON(http.StatusExpectationFailed, nil)
+		return
+	}
+
+	if rsp, err := actions.Marshal(); err == nil {
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(rsp)
+		return
+	}
+	c.JSON(http.StatusExpectationFailed, nil)
+}
 func startServer(service *Service, port string) {
 
 	gin.SetMode(gin.ReleaseMode)
@@ -60,7 +92,7 @@ func startServer(service *Service, port string) {
 - add publish `msg` to the context
 - return if ctx is noop, otherwise publish `msg` to queue
 */
-func (s *Service) GenericMethod(ctx context.Context, data *nats.Msg) bool {
+func (s *Service) GenericMethod(ctx context.Context, msg *nats.Msg) bool {
 
 	// data validation
 	// ...
@@ -71,9 +103,8 @@ func (s *Service) GenericMethod(ctx context.Context, data *nats.Msg) bool {
 	event := noop.Event{
 		Name:        "Async method triggered at " + s.Name,
 		NextSubject: "Next stage -> " + s.subjForNext(),
-		Meta:        string(data.Data),
+		Meta:        string(msg.Data),
 	}
-
 	// add this data to actions if actions was previously added to this ctx
 	// otherwise, nothing is added
 	noop.ActionsFromCtx(ctx).AddEvent(event)
@@ -84,49 +115,16 @@ func (s *Service) GenericMethod(ctx context.Context, data *nats.Msg) bool {
 	}
 
 	// otherwise, act as normal , i.e. publish the message to trigger the next service
-	return NatsPublish(s.subjForNext(), string(data.Data), nil)
+	return NatsPublish(s.subjForNext(), string(msg.Data), nil)
 }
 
 type d struct {
 	Data string `json:"Data"`
 }
 
-func (s *Service) TriggerAsyncFromHttp(c *gin.Context) {
-
-	var data d
-	if e := c.ShouldBindJSON(&data); e != nil {
-		c.JSON(http.StatusExpectationFailed, nil)
-		return
-	}
-	/* Noop-Testing:
-	   Wrap async method as its own http handler, which based on the `noop` param
-	   - extracts the action from request
-	   - triggers underlying async method
-	   - responds with actions taken by this method
-	*/
-
-	// is request a `noop`
-	isNoop := strings.EqualFold(c.Query("noop"), "true")
-
-	ctx := noop.NewCtxWithNoop(c, isNoop) // todo new ctx or gin-request context?
-
-	// actions for this request
-	actions := noop.NewActions()
-
-	// add an event
-	actions.AddEvent(noop.Event{Name: "Endpoint hit at " + s.Name, Meta: c.Request.URL.RequestURI()})
-	ctx = noop.NewCtxWithActions(ctx, actions)
-
-	// manually trigger the async method
-	if !s.GenericMethod(ctx, &nats.Msg{Data: []byte(data.Data)}) {
-		c.JSON(http.StatusExpectationFailed, nil)
-		return
-	}
-
-	if rsp, err := actions.Marshal(); err == nil {
-		c.Writer.WriteHeader(http.StatusOK)
-		_, _ = c.Writer.Write(rsp)
-		return
-	}
-	c.JSON(http.StatusExpectationFailed, nil)
+func (s *Service) subjForThis() string {
+	return "pipeline.stage." + strconv.Itoa(s.Stage)
+}
+func (s *Service) subjForNext() string {
+	return "pipeline.stage." + strconv.Itoa(s.Stage+1)
 }

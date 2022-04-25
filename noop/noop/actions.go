@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 )
 
 const actionKey keyType = "action_key"
@@ -16,7 +15,7 @@ type Actions struct {
 	Events chan []interface{}
 }
 type Event struct {
-	Name        string      `json:"name,omitempty"`
+	Name        string      `json:"name"` // ",omitempty"`
 	NextSubject string      `json:"nextSubject"`
 	Meta        interface{} `json:"meta,omitempty"`
 }
@@ -26,11 +25,10 @@ func ActionsFromCtx(ctx context.Context) *Actions {
 		return nil
 	}
 	// return nil or actions if present
-	a := ctx.Value(actionKey)
-	if a == nil {
-		return nil
+	if a := ctx.Value(actionKey); a != nil {
+		return a.(*Actions)
 	}
-	return a.(*Actions)
+	return nil
 }
 func NewCtxWithActions(ctx context.Context, actions *Actions) context.Context {
 	if ctx == nil {
@@ -48,12 +46,7 @@ func NewActions() *Actions {
 	return a
 }
 func (a *Actions) GetEvents() []Event {
-	if a == nil {
-		fmt.Println("actions nil ")
-		return nil
-	}
-	if a.Events == nil {
-		fmt.Println("events nil ")
+	if a == nil || a.Events == nil {
 		return nil
 	}
 	events := <-a.Events

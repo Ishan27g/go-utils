@@ -12,11 +12,10 @@ func ContainsNoop(ctx context.Context) bool {
 	if ctx == nil {
 		return false
 	}
-	v := ctx.Value(noopKey)
-	if v == nil {
-		return false
+	if v := ctx.Value(noopKey); v != nil {
+		return v.(bool)
 	}
-	return v.(bool)
+	return false
 }
 
 func NewCtxWithNoop(ctx context.Context, isNoop bool) context.Context {
@@ -26,6 +25,5 @@ func NewCtxWithNoop(ctx context.Context, isNoop bool) context.Context {
 	if ContainsNoop(ctx) { // todo needed?
 		return ctx
 	}
-	noopCtx := context.WithValue(ctx, noopKey, isNoop)
-	return noopCtx
+	return context.WithValue(ctx, noopKey, isNoop)
 }
