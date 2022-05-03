@@ -2,6 +2,7 @@ package noop
 
 import (
 	"context"
+	"net/http"
 )
 
 type keyType string
@@ -26,4 +27,22 @@ func NewCtxWithNoop(ctx context.Context, isNoop bool) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, noopKey, isNoop)
+}
+
+func NewHttpRequest(req *http.Request) *http.Request {
+	if ContainsNoop(req.Context()) {
+		req.Header.Add(string(noopKey), "true")
+	}
+	r, _ := http.NewRequestWithContext(NewCtxWithNoop(req.Context(), true),
+		req.Method, req.URL.String(), req.Body)
+	return r
+}
+func Middleware(n http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if isNoop := req.Header.Get(string(noopKey)); isNoop == "true" {
+			req, _ = http.NewRequestWithContext(NewCtxWithNoop(req.Context(), true),
+				req.Method, req.URL.String(), req.Body)
+		}
+		n.ServeHTTP(w, req)
+	})
 }

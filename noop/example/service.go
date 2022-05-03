@@ -2,6 +2,7 @@ package example
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -41,6 +42,8 @@ func (s *Service) TriggerAsyncFromHttp(c *gin.Context) {
 	   - triggers underlying async method
 	   - responds with actions taken by this method
 	*/
+
+	fmt.Println("from context - ", noop.ContainsNoop(c.Request.Context()))
 
 	// get `noop=` from url
 	isNoop := strings.EqualFold(c.Query("noop"), "true")
