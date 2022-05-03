@@ -3,6 +3,8 @@ package noop
 import (
 	"context"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 type keyType string
@@ -50,4 +52,12 @@ func Middleware(n http.Handler) http.Handler {
 		}
 		n.ServeHTTP(w, req)
 	})
+}
+func MiddleWareGin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if isNoop := c.Request.Header.Get(string(noopKey)); isNoop == "true" {
+			c.Request, _ = http.NewRequestWithContext(NewCtxWithNoop(c.Request.Context(), true),
+				c.Request.Method, c.Request.URL.String(), c.Request.Body)
+		}
+	}
 }
