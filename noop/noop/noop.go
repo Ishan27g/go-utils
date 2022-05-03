@@ -35,6 +35,11 @@ func NewHttpRequest(req *http.Request) *http.Request {
 	}
 	r, _ := http.NewRequestWithContext(NewCtxWithNoop(req.Context(), true),
 		req.Method, req.URL.String(), req.Body)
+	for key, value := range req.Header {
+		for _, v := range value {
+			r.Header.Add(key, v)
+		}
+	}
 	return r
 }
 func Middleware(n http.Handler) http.Handler {
